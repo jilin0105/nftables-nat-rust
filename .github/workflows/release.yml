@@ -23,13 +23,15 @@ jobs:
           - target: aarch64-unknown-linux-musl
             bin_name: natarm64
 
+    outputs:
+      version: ${{ steps.vars.outputs.version }}
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set outputs
         id: vars
         run: |
-          echo "sha_short=$(git rev-parse --short=8 HEAD)" >> $GITHUB_OUTPUT
           version=$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f2)
           echo "version=$version" >> $GITHUB_OUTPUT
 
@@ -62,6 +64,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${{ needs.build.outputs.version }}"
+          echo "Releasing version $version"
+
           if gh release delete v${version} -y --cleanup-tag; then
             echo "Deleted old release v${version}"
           else
