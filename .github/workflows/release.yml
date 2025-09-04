@@ -66,11 +66,11 @@ jobs:
           version="${{ needs.build.outputs.version }}"
           echo "Releasing version $version"
 
-          if gh release delete v${version} -y --cleanup-tag; then
+          if gh release delete v${version} -y --cleanup-tag --target master; then
             echo "Deleted old release v${version}"
           else
             echo "No old release to delete"
           fi
 
           gh release create v${version} release_bins/**/nat* \
-            -n "$version" -t "$version" --latest
+            -n "$version" -t "$version" --latest --target master
