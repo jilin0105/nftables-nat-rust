@@ -16,16 +16,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false   # 某个 target 失败不会影响其他 target
       matrix:
-        target: 
+        target:
           - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
           - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
           - armv7-unknown-linux-gnueabihf
           - arm-unknown-linux-gnueabihf
-
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set outputs
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short=8 HEAD)" >> $GITHUB_OUTPUT
 
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
@@ -41,6 +45,20 @@ jobs:
               sudo apt-get install -y gcc-arm-linux-gnueabihf
               ;;
           esac
+
+      - name: Setup cross linker
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml <<EOF
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+
+          [target.armv7-unknown-linux-gnueabihf]
+          linker = "arm-linux-gnueabihf-gcc"
+
+          [target.arm-unknown-linux-gnueabihf]
+          linker = "arm-linux-gnueabihf-gcc"
+          EOF
 
       - name: Build
         run: |
@@ -60,20 +78,20 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: release_bins
 
-      - name: Show downloaded files
-        run: ls -R artifacts
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.0.0
-          name: v1.0.0
-          files: artifacts/**/*
-          make_latest: true
+      - name: GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="1.0.0"
+          if gh release delete v${version} -y --cleanup-tag; then
+            echo "delete old release"
+          else
+            echo "no old release"
+          fi
+          git config --local user.email "admin@arloor.com"
+          git config --local user.name "arloor"
+          gh release create v${version} release_bins/**/nat -n "$version" -t "$version" --latest
