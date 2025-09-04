@@ -17,54 +17,36 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target:
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-musl
+        include:
+          - target: x86_64-unknown-linux-musl
+            bin_name: natx86
+          - target: aarch64-unknown-linux-musl
+            bin_name: natarm64
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Set outputs
         id: vars
-        run: echo "sha_short=$(git rev-parse --short=8 HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Install Rust target
-        run: rustup target add ${{ matrix.target }}
-
-      - name: Install musl tools
         run: |
-          sudo apt-get update
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
-            sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu
-          elif [ "${{ matrix.target }}" = "x86_64-unknown-linux-musl" ]; then
-            sudo apt-get install -y musl-tools
-          fi
+          echo "sha_short=$(git rev-parse --short=8 HEAD)" >> $GITHUB_OUTPUT
+          version=$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f2)
+          echo "version=$version" >> $GITHUB_OUTPUT
 
-      - name: Build
-        run: |
-          set -euxo pipefail
-          rustc -V
-          cargo -V
-          cargo build --release --target ${{ matrix.target }}
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build with cross
+        run: cross build --release --target ${{ matrix.target }}
 
       - name: Rename binary
-        run: |
-          case "${{ matrix.target }}" in
-            x86_64-unknown-linux-musl)
-              mv target/${{ matrix.target }}/release/nat natx86
-              ;;
-            aarch64-unknown-linux-musl)
-              mv target/${{ matrix.target }}/release/nat natarm64
-              ;;
-          esac
+        run: mv target/${{ matrix.target }}/release/nat ${{ matrix.bin_name }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
-          path: |
-            natx86
-            natarm64
+          name: ${{ matrix.bin_name }}
+          path: ${{ matrix.bin_name }}
 
   release:
     runs-on: ubuntu-latest
@@ -79,13 +61,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="1.0.0"
+          version="${{ needs.build.outputs.version }}"
           if gh release delete v${version} -y --cleanup-tag; then
             echo "Deleted old release v${version}"
           else
             echo "No old release to delete"
           fi
 
-          # 直接发布 natx86 和 natarm64
           gh release create v${version} release_bins/**/nat* \
             -n "$version" -t "$version" --latest
