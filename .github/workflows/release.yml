@@ -16,12 +16,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false   # 某个 target 失败不会影响其他 target
       matrix:
         target: 
           - x86_64-unknown-linux-gnu
           - aarch64-unknown-linux-gnu
           - armv7-unknown-linux-gnueabihf
           - arm-unknown-linux-gnueabihf
+
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +43,11 @@ jobs:
           esac
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          set -euxo pipefail
+          rustc -V
+          cargo -V
+          cargo build --release --target ${{ matrix.target }} -v
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -51,7 +57,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: build   # 等待 build job 全部完成
+    needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Download artifacts
