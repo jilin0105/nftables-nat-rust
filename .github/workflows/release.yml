@@ -29,21 +29,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 提取 Cargo.toml 版本号
       - name: Set outputs
         id: vars
         run: |
           version=$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f2)
           echo "version=$version" >> $GITHUB_OUTPUT
 
+      # 安装 cross
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross
 
+      # 使用 cross 编译
       - name: Build with cross
         run: cross build --release --target ${{ matrix.target }}
 
+      # 重命名二进制
       - name: Rename binary
         run: mv target/${{ matrix.target }}/release/nat ${{ matrix.bin_name }}
 
+      # 上传 artifact
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -55,10 +60,12 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
+      # 下载 build 生成的二进制
       - uses: actions/download-artifact@v4
         with:
           path: release_bins
 
+      # 发布 Release（不依赖 git，本地仓库）
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,11 +73,6 @@ jobs:
           version="${{ needs.build.outputs.version }}"
           echo "Releasing version $version"
 
-          if gh release delete v${version} -y --cleanup-tag --target master; then
-            echo "Deleted old release v${version}"
-          else
-            echo "No old release to delete"
-          fi
-
+          # 直接创建 Release，不删除旧 release
           gh release create v${version} release_bins/**/nat* \
-            -n "$version" -t "$version" --latest --target master
+            -n "$version" -t "$version" --latest --notes "Release $version"
