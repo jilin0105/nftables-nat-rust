@@ -31,23 +31,40 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Install cross
-        run: cargo install cross
+      - name: Install musl tools
+        run: |
+          sudo apt-get update
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
+            sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu
+          elif [ "${{ matrix.target }}" = "x86_64-unknown-linux-musl" ]; then
+            sudo apt-get install -y musl-tools
+          fi
 
-      - name: Build static binary with cross
-        run: cross build --release --target ${{ matrix.target }}
+      - name: Build
+        run: |
+          set -euxo pipefail
+          rustc -V
+          cargo -V
+          cargo build --release --target ${{ matrix.target }}
 
       - name: Rename binary
         run: |
-          BIN_NAME="nat"
-          OUT_NAME="nat-${{ matrix.target }}"
-          mv target/${{ matrix.target }}/release/$BIN_NAME $OUT_NAME
+          case "${{ matrix.target }}" in
+            x86_64-unknown-linux-musl)
+              mv target/${{ matrix.target }}/release/nat natx86
+              ;;
+            aarch64-unknown-linux-musl)
+              mv target/${{ matrix.target }}/release/nat natarm64
+              ;;
+          esac
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: nat-${{ matrix.target }}
+          path: |
+            natx86
+            natarm64
 
   release:
     runs-on: ubuntu-latest
@@ -58,18 +75,17 @@ jobs:
         with:
           path: release_bins
 
-      - name: Create GitHub Release
+      - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="1.0.0"
-          # 删除旧 release（如果存在）
           if gh release delete v${version} -y --cleanup-tag; then
             echo "Deleted old release v${version}"
           else
             echo "No old release to delete"
           fi
-          git config --local user.email "admin@arloor.com"
-          git config --local user.name "arloor"
-          # 上传静态编译的二进制
-          gh release create v${version} release_bins/nat-* -n "$version" -t "$version" --latest
+
+          # 直接发布 natx86 和 natarm64
+          gh release create v${version} release_bins/**/nat* \
+            -n "$version" -t "$version" --latest
