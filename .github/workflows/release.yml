@@ -19,11 +19,8 @@ jobs:
       matrix:
         target:
           - x86_64-unknown-linux-gnu
-          - x86_64-unknown-linux-musl
           - aarch64-unknown-linux-gnu
-          - aarch64-unknown-linux-musl
-          - armv7-unknown-linux-gnueabihf
-          - arm-unknown-linux-gnueabihf
+
     steps:
       - uses: actions/checkout@v4
 
@@ -37,14 +34,9 @@ jobs:
       - name: Install cross compiler
         run: |
           sudo apt-get update
-          case "${{ matrix.target }}" in
-            aarch64-unknown-linux-gnu)
-              sudo apt-get install -y gcc-aarch64-linux-gnu
-              ;;
-            armv7-unknown-linux-gnueabihf|arm-unknown-linux-gnueabihf)
-              sudo apt-get install -y gcc-arm-linux-gnueabihf
-              ;;
-          esac
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
 
       - name: Setup cross linker
         run: |
@@ -52,12 +44,6 @@ jobs:
           cat > .cargo/config.toml <<EOF
           [target.aarch64-unknown-linux-gnu]
           linker = "aarch64-linux-gnu-gcc"
-
-          [target.armv7-unknown-linux-gnueabihf]
-          linker = "arm-linux-gnueabihf-gcc"
-
-          [target.arm-unknown-linux-gnueabihf]
-          linker = "arm-linux-gnueabihf-gcc"
           EOF
 
       - name: Build
@@ -65,13 +51,19 @@ jobs:
           set -euxo pipefail
           rustc -V
           cargo -V
-          cargo build --release --target ${{ matrix.target }} -v
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Rename binary
+        run: |
+          BIN_NAME="nat"
+          OUT_NAME="nat-${{ matrix.target }}"
+          mv target/${{ matrix.target }}/release/$BIN_NAME $OUT_NAME
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nat-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/nat
+          name: ${{ matrix.target }}
+          path: nat-${{ matrix.target }}
 
   release:
     runs-on: ubuntu-latest
@@ -94,4 +86,4 @@ jobs:
           fi
           git config --local user.email "admin@arloor.com"
           git config --local user.name "arloor"
-          gh release create v${version} release_bins/**/nat -n "$version" -t "$version" --latest
+          gh release create v${version} release_bins/**/nat-* -n "$version" -t "$version" --latest
