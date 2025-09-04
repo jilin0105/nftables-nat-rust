@@ -18,8 +18,8 @@ jobs:
     strategy:
       matrix:
         target:
-          - x86_64-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
 
     steps:
       - uses: actions/checkout@v4
@@ -31,22 +31,23 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Install cross compiler
+      - name: Install musl tools
         run: |
           sudo apt-get update
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu
-          fi
+          sudo apt-get install -y musl-tools
 
-      - name: Setup cross linker
+      - name: Setup cargo config for musl
         run: |
           mkdir -p .cargo
           cat > .cargo/config.toml <<EOF
-          [target.aarch64-unknown-linux-gnu]
-          linker = "aarch64-linux-gnu-gcc"
+          [target.x86_64-unknown-linux-musl]
+          linker = "x86_64-linux-musl-gcc"
+
+          [target.aarch64-unknown-linux-musl]
+          linker = "aarch64-linux-musl-gcc"
           EOF
 
-      - name: Build
+      - name: Build static binary
         run: |
           set -euxo pipefail
           rustc -V
@@ -74,16 +75,18 @@ jobs:
         with:
           path: release_bins
 
-      - name: GitHub Release
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="1.0.0"
+          # 删除旧 release（如果存在）
           if gh release delete v${version} -y --cleanup-tag; then
-            echo "delete old release"
+            echo "Deleted old release v${version}"
           else
-            echo "no old release"
+            echo "No old release to delete"
           fi
           git config --local user.email "admin@arloor.com"
           git config --local user.name "arloor"
-          gh release create v${version} release_bins/**/nat-* -n "$version" -t "$version" --latest
+          # 上传静态编译的二进制
+          gh release create v${version} release_bins/nat-* -n "$version" -t "$version" --latest
