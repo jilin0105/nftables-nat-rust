@@ -31,28 +31,11 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Install musl tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
+      - name: Install cross
+        run: cargo install cross
 
-      - name: Setup cargo config for musl
-        run: |
-          mkdir -p .cargo
-          cat > .cargo/config.toml <<EOF
-          [target.x86_64-unknown-linux-musl]
-          linker = "x86_64-linux-musl-gcc"
-
-          [target.aarch64-unknown-linux-musl]
-          linker = "aarch64-linux-musl-gcc"
-          EOF
-
-      - name: Build static binary
-        run: |
-          set -euxo pipefail
-          rustc -V
-          cargo -V
-          cargo build --release --target ${{ matrix.target }}
+      - name: Build static binary with cross
+        run: cross build --release --target ${{ matrix.target }}
 
       - name: Rename binary
         run: |
